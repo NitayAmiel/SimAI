@@ -50,6 +50,12 @@
 using namespace ns3;
 using namespace std;
 
+// External declarations for variables defined in common.h
+extern map<pair<uint32_t, uint32_t>, uint64_t> total_data_transferred;
+extern uint32_t gpu_num;
+
+// External declarations for functions defined in common.h
+extern void printGPUDataTransferStats();
 
 std::map<std::pair<std::pair<int, int>,int>, AstraSim::ncclFlowTag> receiver_pending_queue;
 
@@ -310,6 +316,12 @@ void qp_finish(FILE *fout, Ptr<RdmaQueuePair> q) {
           (Simulator::Now() - q->startTime).GetTimeStep(), standalone_fct);
   fflush(fout);
 
+  // Track total data transferred between GPU pairs
+  if (sid < gpu_num && did < gpu_num) {
+    pair<uint32_t, uint32_t> gpu_pair = make_pair(sid, did);
+    total_data_transferred[gpu_pair] += q->m_size;
+  }
+
   AstraSim::ncclFlowTag flowTag;
   uint64_t notify_size;
   {
@@ -371,7 +383,7 @@ void send_finish(FILE *fout, Ptr<RdmaQueuePair> q) {
   notify_sender_sending_finished(sid, did, all_sent_chunksize, flowTag);
 }
 
-int main1(string network_topo,string network_conf) {
+int main1(string network_topo,string network_conf, bool extract_transport_matrix) {
   clock_t begint, endt;
   begint = clock();
 
@@ -380,11 +392,56 @@ int main1(string network_topo,string network_conf) {
   SetConfig();
   SetupNetwork(qp_finish,send_finish);
 
+  // Extract transport matrix after network setup if requested
+  if (extract_transport_matrix) {
+    extractTransportMatrix();
+  }
+
 std::cout << "Running Simulation.\n";
   fflush(stdout);
   NS_LOG_INFO("Run Simulation.");
 
   endt = clock();
+  
+  // Print GPU data transfer statistics at the end
+  printGPUDataTransferStats();
+
+  // Log total data sent from each GPU to all others using NcclLog
+  MockNcclLog* NcclLog = MockNcclLog::getInstance();
+  for (uint32_t src = 0; src < gpu_num; ++src) {
+    std::string totals;
+    for (uint32_t dst = 0; dst < gpu_num; ++dst) {
+      auto it = total_data_transferred.find(std::make_pair(src, dst));
+      uint64_t sent = (it != total_data_transferred.end()) ? it->second : 0;
+      totals += " [GPU " + std::to_string(src) + " -> GPU " + std::to_string(dst) + ": " + std::to_string(sent) + " bytes]";
+    }
+    NcclLog->writeLog(NcclLogLevel::INFO, "Total data sent from GPU %d:%s", src, totals.c_str());
+  }
+
+  // Output the data transfer matrix to a CSV file
+  std::ofstream csv_file("gpu_data_transfer_matrix.csv");
+  if (csv_file.is_open()) {
+    // Write header
+    csv_file << "GPU";
+    for (uint32_t dst = 0; dst < gpu_num; ++dst) {
+      csv_file << ",GPU" << dst;
+    }
+    csv_file << std::endl;
+    // Write each row
+    for (uint32_t src = 0; src < gpu_num; ++src) {
+      csv_file << "GPU" << src;
+      for (uint32_t dst = 0; dst < gpu_num; ++dst) {
+        auto it = total_data_transferred.find(std::make_pair(src, dst));
+        uint64_t sent = (it != total_data_transferred.end()) ? it->second : 0;
+        csv_file << "," << sent;
+      }
+      csv_file << std::endl;
+    }
+    csv_file.close();
+  } else {
+    std::cerr << "Failed to open gpu_data_transfer_matrix.csv for writing." << std::endl;
+  }
+  
   return 0;
 }
 #endif

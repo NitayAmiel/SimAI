@@ -48,6 +48,10 @@ using namespace std;
 
 NS_LOG_COMPONENT_DEFINE("GENERIC_SIMULATION");
 
+// Function declarations
+void extractTransportMatrix();
+void printGPUDataTransferStats();
+
 uint32_t cc_mode = 1;
 bool enable_qcn = true, use_dynamic_pfc_threshold = true;
 uint32_t packet_payload_size = 1000, l2_chunk_size = 0, l2_ack_interval = 0;
@@ -89,6 +93,7 @@ uint32_t enable_trace = 1;
 uint32_t buffer_size = 16;
 
 uint32_t node_num, switch_num, link_num, trace_num, nvswitch_num, gpus_per_server;
+uint32_t gpu_num; // Number of GPUs (calculated as node_num - switch_num - nvswitch_num)
 GPUType gpu_type;
 std::vector<int>NVswitchs;
 
@@ -118,6 +123,31 @@ uint64_t maxRtt, maxBdp;
 std::vector<Ipv4Address> serverAddress;
 
 std::unordered_map<uint32_t, unordered_map<uint32_t, uint16_t>> portNumber;
+
+// Data transfer tracking
+map<pair<uint32_t, uint32_t>, uint64_t> total_data_transferred;
+
+void initializeDataTransferTracking() {
+  total_data_transferred.clear();
+  cout << "Data transfer tracking initialized for " << gpu_num << " GPUs" << endl;
+}
+
+void printGPUDataTransferStats() {
+  cout << "*********************    GPU DATA TRANSFER STATISTICS    *********************" << endl;
+  uint64_t total_transferred = 0;
+  
+  for (auto i = total_data_transferred.begin(); i != total_data_transferred.end(); i++) {
+    uint32_t src = i->first.first;
+    uint32_t dst = i->first.second;
+    uint64_t data = i->second;
+    total_transferred += data;
+    cout << "GPU " << src << " -> GPU " << dst << ": " << data << " bytes" << endl;
+  }
+  
+  cout << "Total data transferred: " << total_transferred << " bytes (" 
+       << (double)total_transferred / (1024*1024*1024) << " GB)" << endl;
+  cout << "****************************************************************************" << endl;
+}
 
 struct Interface {
   uint32_t idx;
@@ -413,6 +443,151 @@ void printRoutingEntries() {
     }
   } 
 
+}
+
+void extractTransportMatrix() {
+  cout << "*********************    EXTRACTING TRANSPORT MATRIX    *********************" << endl;
+  
+  // Extract path matrix
+  FILE* path_file = fopen("transport_matrix_paths.txt", "w");
+  if (path_file) {
+    fprintf(path_file, "# Transport Matrix - Path Information\n");
+    fprintf(path_file, "# Format: src_id dst_id path_length next_hop1 next_hop2 ... next_hopN\n");
+    
+    for (auto i = nextHop.begin(); i != nextHop.end(); i++) {
+      Ptr<Node> src = i->first;
+      auto &table = i->second;
+      for (auto j = table.begin(); j != table.end(); j++) {
+        Ptr<Node> dst = j->first;
+        vector<Ptr<Node>> path = j->second;
+        
+        fprintf(path_file, "%d %d %zu", src->GetId(), dst->GetId(), path.size());
+        for (auto hop : path) {
+          fprintf(path_file, " %d", hop->GetId());
+        }
+        fprintf(path_file, "\n");
+      }
+    }
+    fclose(path_file);
+    cout << "Path matrix saved to transport_matrix_paths.txt" << endl;
+  }
+  
+  // Extract bandwidth matrix
+  FILE* bw_file = fopen("transport_matrix_bandwidth.txt", "w");
+  if (bw_file) {
+    fprintf(bw_file, "# Transport Matrix - Bandwidth Information\n");
+    fprintf(bw_file, "# Format: src_id dst_id bandwidth_bps\n");
+    
+    for (auto i = pairBw.begin(); i != pairBw.end(); i++) {
+      uint32_t src = i->first;
+      for (auto j = i->second.begin(); j != i->second.end(); j++) {
+        uint32_t dst = j->first;
+        uint64_t bw = j->second;
+        fprintf(bw_file, "%u %u %lu\n", src, dst, bw);
+      }
+    }
+    fclose(bw_file);
+    cout << "Bandwidth matrix saved to transport_matrix_bandwidth.txt" << endl;
+  }
+  
+  // Extract delay matrix
+  FILE* delay_file = fopen("transport_matrix_delay.txt", "w");
+  if (delay_file) {
+    fprintf(delay_file, "# Transport Matrix - Delay Information\n");
+    fprintf(delay_file, "# Format: src_id dst_id delay_ns\n");
+    
+    for (auto i = pairDelay.begin(); i != pairDelay.end(); i++) {
+      Ptr<Node> src = i->first;
+      for (auto j = i->second.begin(); j != i->second.end(); j++) {
+        Ptr<Node> dst = j->first;
+        uint64_t delay = j->second;
+        fprintf(delay_file, "%d %d %lu\n", src->GetId(), dst->GetId(), delay);
+      }
+    }
+    fclose(delay_file);
+    cout << "Delay matrix saved to transport_matrix_delay.txt" << endl;
+  }
+  
+  // Extract RTT matrix
+  FILE* rtt_file = fopen("transport_matrix_rtt.txt", "w");
+  if (rtt_file) {
+    fprintf(rtt_file, "# Transport Matrix - RTT Information\n");
+    fprintf(rtt_file, "# Format: src_id dst_id rtt_ns\n");
+    
+    for (auto i = pairRtt.begin(); i != pairRtt.end(); i++) {
+      uint32_t src = i->first;
+      for (auto j = i->second.begin(); j != i->second.end(); j++) {
+        uint32_t dst = j->first;
+        uint64_t rtt = j->second;
+        fprintf(rtt_file, "%u %u %lu\n", src, dst, rtt);
+      }
+    }
+    fclose(rtt_file);
+    cout << "RTT matrix saved to transport_matrix_rtt.txt" << endl;
+  }
+  
+  // Extract data transfer matrix
+  FILE* data_file = fopen("transport_matrix_data_transferred.txt", "w");
+  if (data_file) {
+    fprintf(data_file, "# Transport Matrix - Total Data Transferred\n");
+    fprintf(data_file, "# Format: src_gpu_id dst_gpu_id total_bytes_transferred\n");
+    
+    for (auto i = total_data_transferred.begin(); i != total_data_transferred.end(); i++) {
+      uint32_t src = i->first.first;
+      uint32_t dst = i->first.second;
+      uint64_t data = i->second;
+      fprintf(data_file, "%u %u %lu\n", src, dst, data);
+    }
+    fclose(data_file);
+    cout << "Data transfer matrix saved to transport_matrix_data_transferred.txt" << endl;
+  }
+  
+  // Extract topology information
+  FILE* topo_file = fopen("transport_matrix_topology.txt", "w");
+  if (topo_file) {
+    fprintf(topo_file, "# Transport Matrix - Topology Information\n");
+    fprintf(topo_file, "# Format: node1_id node2_id interface_id bandwidth_bps delay_ns\n");
+    
+    for (auto i = nbr2if.begin(); i != nbr2if.end(); i++) {
+      Ptr<Node> node1 = i->first;
+      for (auto j = i->second.begin(); j != i->second.end(); j++) {
+        Ptr<Node> node2 = j->first;
+        Interface iface = j->second;
+        if (iface.up) {
+          fprintf(topo_file, "%d %d %u %lu %lu\n", 
+                  node1->GetId(), node2->GetId(), 
+                  iface.idx, iface.bw, iface.delay);
+        }
+      }
+    }
+    fclose(topo_file);
+    cout << "Topology matrix saved to transport_matrix_topology.txt" << endl;
+  }
+  
+  // Create a comprehensive transport matrix summary
+  FILE* summary_file = fopen("transport_matrix_summary.txt", "w");
+  if (summary_file) {
+    fprintf(summary_file, "# Transport Matrix Summary\n");
+    fprintf(summary_file, "# Generated at simulation time\n");
+    fprintf(summary_file, "# Total nodes: %d\n", node_num);
+    fprintf(summary_file, "# Total switches: %d\n", switch_num);
+    fprintf(summary_file, "# Total NVSwitches: %d\n", nvswitch_num);
+    fprintf(summary_file, "# Total links: %d\n", link_num);
+    fprintf(summary_file, "# Max RTT: %lu ns\n", maxRtt);
+    fprintf(summary_file, "# Max BDP: %lu bytes\n", maxBdp);
+    fprintf(summary_file, "#\n");
+    fprintf(summary_file, "# Files generated:\n");
+    fprintf(summary_file, "# - transport_matrix_paths.txt: Routing paths\n");
+    fprintf(summary_file, "# - transport_matrix_bandwidth.txt: Link bandwidths\n");
+    fprintf(summary_file, "# - transport_matrix_delay.txt: Link delays\n");
+    fprintf(summary_file, "# - transport_matrix_rtt.txt: End-to-end RTTs\n");
+    fprintf(summary_file, "# - transport_matrix_data_transferred.txt: Total data transferred between GPUs\n");
+    fprintf(summary_file, "# - transport_matrix_topology.txt: Physical topology\n");
+    fclose(summary_file);
+    cout << "Transport matrix summary saved to transport_matrix_summary.txt" << endl;
+  }
+  
+  cout << "Transport matrix extraction completed!" << endl;
 }
 
 bool validateRoutingEntries() {
@@ -713,6 +888,8 @@ void SetupNetwork(void (*qp_finish)(FILE *, Ptr<RdmaQueuePair>),void (*send_fini
   } else{
     gpu_type = GPUType::NONE;
   }
+
+  gpu_num = node_num - switch_num - nvswitch_num;
 
   std::vector<uint32_t> node_type(node_num, 0);
   for (uint32_t i = 0; i < nvswitch_num; i++) {
@@ -1031,5 +1208,8 @@ void SetupNetwork(void (*qp_finish)(FILE *, Ptr<RdmaQueuePair>),void (*send_fini
                         &TakeDownLink, n, n.Get(link_down_A),
                         n.Get(link_down_B));
   }
+  
+  // Initialize data transfer tracking
+  initializeDataTransferTracking();
 }
 #endif
