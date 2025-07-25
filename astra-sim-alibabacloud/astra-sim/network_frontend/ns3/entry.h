@@ -152,6 +152,17 @@ void SendFlow(int src, int dst, uint64_t maxPacketCount,
   } else {
     transport_matrix_Nitay[key] = val;
   }
+  // Export the map to a CSV file, overwriting each time
+  std::ofstream ds_csv_file("transport_matrix_Nitay.csv");
+  if (ds_csv_file.is_open()) {
+    ds_csv_file << "src,dst,value" << std::endl;
+    for (const auto& entry : transport_matrix_Nitay) {
+      ds_csv_file << entry.first.first << "," << entry.first.second << "," << entry.second << std::endl;
+    }
+    ds_csv_file.close();
+  } else {
+    std::cerr << "Failed to open transport_matrix_Nitay.csv for writing." << std::endl;
+  }
 
     NcclLog->writeLog(NcclLogLevel::ERROR," [Packet sending event]  %dSendFlow to  %d channelid:  %d flow_id  %d srcip  %d dstip  %d size:  %llu at the tick:  %d",src,dst,tag,flow_id,serverAddress[src],serverAddress[dst],maxPacketCount,AstraSim::Sys::boostedTick());
     NcclLog->writeLog(NcclLogLevel::DEBUG," request->flowTag [Packet sending event]  %dSendFlow to  %d tag_id:  %d flow_id  %d srcip  %d dstip  %d size:  %llu at the tick:  %d",request->flowTag.sender_node,request->flowTag.receiver_node,request->flowTag.tag_id,request->flowTag.current_flow_id,serverAddress[src],serverAddress[dst],maxPacketCount,AstraSim::Sys::boostedTick());
