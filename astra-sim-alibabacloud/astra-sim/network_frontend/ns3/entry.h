@@ -58,7 +58,7 @@ extern uint32_t gpu_num;
 extern void printGPUDataTransferStats();
 
 std::map<std::pair<std::pair<int, int>,int>, AstraSim::ncclFlowTag> receiver_pending_queue;
-
+std::map<std::pair<long long int, long long int>,long long int> transport_matrix_Nitay;
 
 std::map<std::pair<int, std::pair<int, int>>, AstraSim::ncclFlowTag> sender_src_port_map; 
 struct task1 {
@@ -145,7 +145,15 @@ void SendFlow(int src, int dst, uint64_t maxPacketCount,
   flow_input.idx++;
   if(real_PacketCount == 0) real_PacketCount = 1;
     MockNcclLog* NcclLog = MockNcclLog::getInstance();
-    NcclLog->writeLog(NcclLogLevel::DEBUG," [Packet sending event]  %dSendFlow to  %d channelid:  %d flow_id  %d srcip  %d dstip  %d size:  %llu at the tick:  %d",src,dst,tag,flow_id,serverAddress[src],serverAddress[dst],maxPacketCount,AstraSim::Sys::boostedTick());
+  std::pair<long long int, long long int> key = {serverAddress[src],serverAddress[dst]};
+  long long int val = maxPacketCount;
+  if (transport_matrix_Nitay.find(key) != transport_matrix_Nitay.end()) {
+    transport_matrix_Nitay[key] += val;
+  } else {
+    transport_matrix_Nitay[key] = val;
+  }
+
+    NcclLog->writeLog(NcclLogLevel::ERROR," [Packet sending event]  %dSendFlow to  %d channelid:  %d flow_id  %d srcip  %d dstip  %d size:  %llu at the tick:  %d",src,dst,tag,flow_id,serverAddress[src],serverAddress[dst],maxPacketCount,AstraSim::Sys::boostedTick());
     NcclLog->writeLog(NcclLogLevel::DEBUG," request->flowTag [Packet sending event]  %dSendFlow to  %d tag_id:  %d flow_id  %d srcip  %d dstip  %d size:  %llu at the tick:  %d",request->flowTag.sender_node,request->flowTag.receiver_node,request->flowTag.tag_id,request->flowTag.current_flow_id,serverAddress[src],serverAddress[dst],maxPacketCount,AstraSim::Sys::boostedTick());
   RdmaClientHelper clientHelper(
       pg, serverAddress[src], serverAddress[dst], port, dport, real_PacketCount,
