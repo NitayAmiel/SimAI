@@ -145,7 +145,7 @@ void SendFlow(int src, int dst, uint64_t maxPacketCount,
   flow_input.idx++;
   if(real_PacketCount == 0) real_PacketCount = 1;
     MockNcclLog* NcclLog = MockNcclLog::getInstance();
-  std::pair<long long int, long long int> key = {serverAddress[src],serverAddress[dst]};
+  std::pair<int, int> key = {src, dst};
   long long int val = maxPacketCount;
   if (transport_matrix_Nitay.find(key) != transport_matrix_Nitay.end()) {
     transport_matrix_Nitay[key] += val;
