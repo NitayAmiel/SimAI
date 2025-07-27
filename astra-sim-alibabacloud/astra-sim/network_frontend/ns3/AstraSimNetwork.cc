@@ -332,11 +332,11 @@ int main(int argc, char *argv[]) {
 
   Simulator::Run();
   Simulator::Stop(Seconds(2000000000));
+  print_transport_matrix_Nitay_to_csv();
   Simulator::Destroy();
   
   #ifdef NS3_MPI
   MpiInterface::Disable ();
   #endif
-  print_transport_matrix_Nitay_to_csv();
   return 0;
 }
