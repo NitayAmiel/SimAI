@@ -152,17 +152,6 @@ void SendFlow(int src, int dst, uint64_t maxPacketCount,
   } else {
     transport_matrix_Nitay[key] = val;
   }
-  // Export the map to a CSV file, overwriting each time
-  std::ofstream ds_csv_file("transport_matrix_Nitay.csv");
-  if (ds_csv_file.is_open()) {
-    ds_csv_file << "src,dst,value" << std::endl;
-    for (const auto& entry : transport_matrix_Nitay) {
-      ds_csv_file << entry.first.first << "," << entry.first.second << "," << entry.second << std::endl;
-    }
-    ds_csv_file.close();
-  } else {
-    std::cerr << "Failed to open transport_matrix_Nitay.csv for writing." << std::endl;
-  }
 
     NcclLog->writeLog(NcclLogLevel::ERROR," [Packet sending event]  %dSendFlow to  %d channelid:  %d flow_id  %d srcip  %d dstip  %d size:  %llu at the tick:  %d",src,dst,tag,flow_id,serverAddress[src],serverAddress[dst],maxPacketCount,AstraSim::Sys::boostedTick());
     NcclLog->writeLog(NcclLogLevel::DEBUG," request->flowTag [Packet sending event]  %dSendFlow to  %d tag_id:  %d flow_id  %d srcip  %d dstip  %d size:  %llu at the tick:  %d",request->flowTag.sender_node,request->flowTag.receiver_node,request->flowTag.tag_id,request->flowTag.current_flow_id,serverAddress[src],serverAddress[dst],maxPacketCount,AstraSim::Sys::boostedTick());
@@ -464,3 +453,32 @@ std::cout << "Running Simulation.\n";
   return 0;
 }
 #endif
+
+// Function declaration
+void print_transport_matrix_Nitay_to_csv();
+
+// Function definition (add at the end of the file, before #endif)
+void print_transport_matrix_Nitay_to_csv() {
+  std::ofstream ds_csv_file("transport_matrix_Nitay.csv");
+  if (ds_csv_file.is_open()) {
+    // Write header
+    ds_csv_file << "GPU";
+    for (uint32_t dst = 0; dst < gpu_num; ++dst) {
+      ds_csv_file << ",GPU" << dst;
+    }
+    ds_csv_file << std::endl;
+    // Write each row
+    for (uint32_t src = 0; src < gpu_num; ++src) {
+      ds_csv_file << "GPU" << src;
+      for (uint32_t dst = 0; dst < gpu_num; ++dst) {
+        auto it = transport_matrix_Nitay.find(std::make_pair(src, dst));
+        long long int val = (it != transport_matrix_Nitay.end()) ? it->second : 0;
+        ds_csv_file << "," << val;
+      }
+      ds_csv_file << std::endl;
+    }
+    ds_csv_file.close();
+  } else {
+    std::cerr << "Failed to open transport_matrix_Nitay.csv for writing." << std::endl;
+  }
+}

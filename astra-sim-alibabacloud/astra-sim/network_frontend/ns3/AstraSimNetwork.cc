@@ -337,5 +337,6 @@ int main(int argc, char *argv[]) {
   #ifdef NS3_MPI
   MpiInterface::Disable ();
   #endif
+  print_transport_matrix_Nitay_to_csv();
   return 0;
 }
