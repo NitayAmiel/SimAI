@@ -1,5 +1,5 @@
-input_file = "G13B-M1-C01_GPT13B_megatron_tp8_pp1_mbs1_A100.txt"
-output_file = "gpt_workload_converted.txt"
+input_file = "G175B-M1-C03_GPT175B_megatron_tp8_pp1_mbs1_A100.txt"
+output_file = "converted_work_load.txt"
 
 with open(input_file) as fin, open(output_file, "w") as fout:
     # Write new header
