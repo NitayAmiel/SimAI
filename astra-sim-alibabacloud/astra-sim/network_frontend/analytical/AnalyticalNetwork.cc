@@ -15,6 +15,8 @@
 
 #include"AnalyticalNetwork.h"
 #include"AnaSim.h"
+#include <fstream>
+#include <iostream>
 
 extern std::map<std::pair<std::pair<int, int>,int>, AstraSim::ncclFlowTag> receiver_pending_queue;
 extern map<std::pair<int, std::pair<int, int>>, struct task1> expeRecvHash;
@@ -54,6 +56,18 @@ int AnalyticalNetWork::sim_send(
     void (*msg_handler)(void* fun_arg),
     void* fun_arg) {
 
+  // Track data transfer for transport matrix
+  if (nodeHash.find(make_pair(rank, 0)) == nodeHash.end()) {
+    nodeHash[make_pair(rank, 0)] = count;
+  } else {
+    nodeHash[make_pair(rank, 0)] += count;
+  }
+
+  // Call the message handler immediately (analytical mode)
+  if (msg_handler != nullptr) {
+    msg_handler(fun_arg);
+  }
+
   return 0;
 }
 
@@ -67,5 +81,50 @@ int AnalyticalNetWork::sim_recv(
     void (*msg_handler)(void* fun_arg),
     void* fun_arg) {
 
+  // Track data received for transport matrix
+  if (nodeHash.find(make_pair(rank, 1)) == nodeHash.end()) {
+    nodeHash[make_pair(rank, 1)] = count;
+  } else {
+    nodeHash[make_pair(rank, 1)] += count;
+  }
+
+  // Call the message handler immediately (analytical mode)
+  if (msg_handler != nullptr) {
+    msg_handler(fun_arg);
+  }
+
   return 0;
+}
+
+// Function to print transport matrix for analytical backend
+void print_transport_matrix_analytical() {
+  std::ofstream csv_file("transport_matrix_Nitay.csv");
+  if (csv_file.is_open()) {
+    csv_file << "Node,Sent,Received" << std::endl;
+    
+    std::map<int, std::pair<int64_t, int64_t>> node_data;
+    
+    // Collect sent and received data for each node
+    for (auto& entry : nodeHash) {
+      int node_id = entry.first.first;
+      int direction = entry.first.second; // 0 = sent, 1 = received
+      int64_t amount = entry.second;
+      
+      if (direction == 0) {
+        node_data[node_id].first = amount; // sent
+      } else {
+        node_data[node_id].second = amount; // received
+      }
+    }
+    
+    // Write data to CSV
+    for (auto& entry : node_data) {
+      csv_file << entry.first << "," << entry.second.first << "," << entry.second.second << std::endl;
+    }
+    
+    csv_file.close();
+    std::cout << "Transport matrix saved to transport_matrix_Nitay.csv" << std::endl;
+  } else {
+    std::cerr << "Failed to open transport_matrix_Nitay.csv for writing." << std::endl;
+  }
 }

@@ -29,6 +29,7 @@ public:
         return 0;
     }
     int sim_finish(){
+        print_transport_matrix_analytical();
         return 0;
     }
     double sim_time_resolution(){
@@ -61,4 +62,8 @@ public:
         void (*msg_handler)(void* fun_arg),
         void* fun_arg) ;
 };
+
+// Function declaration for transport matrix printing
+void print_transport_matrix_analytical();
+
 #endif
